@@ -1,0 +1,10 @@
+<library path="lib/librviz_plugin_tutorials">
+  <class name="rviz_stereo_camera_plugin/StereoImageDisplay"
+    type="rviz_stereo_camera_plugin::StereoImageDisplay"
+    base_class_type="rviz::Display">
+    <description>
+      Displays direction and scale of accelerations from sensor_msgs/Imu messages.
+    </description>
+    <message_type>sensor_msgs/Image</message_type>
+  </class>
+</library>
