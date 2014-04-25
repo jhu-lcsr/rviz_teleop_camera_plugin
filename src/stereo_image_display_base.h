@@ -132,8 +132,7 @@ protected:
     *left_topic_property_,
     *right_topic_property_;
   rviz::EnumProperty 
-    *left_transport_property_,
-    *right_transport_property_;
+    *transport_property_;
   rviz::IntProperty *queue_size_property_;
 
   std::string transport_;

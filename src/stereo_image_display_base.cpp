@@ -56,14 +56,10 @@ StereoImageDisplayBase::StereoImageDisplayBase() :
                                                QString::fromStdString(ros::message_traits::datatype<sensor_msgs::Image>()),
                                                "sensor_msgs::Image topic to subscribe to.", this, SLOT( updateTopics() ));
 
-  left_transport_property_ = new EnumProperty("Left Transport Hint", "raw", "Preferred method of sending images.", this,
-                                         SLOT( updateTopics() ));
-  right_transport_property_ = new EnumProperty("Right Transport Hint", "raw", "Preferred method of sending images.", this,
+  transport_property_ = new EnumProperty("Transport Hint", "raw", "Preferred method of sending images.", this,
                                          SLOT( updateTopics() ));
 
-  connect(left_transport_property_, SIGNAL( requestOptions( EnumProperty* )), this,
-          SLOT( fillTransportOptionList( EnumProperty* )));
-  connect(right_transport_property_, SIGNAL( requestOptions( EnumProperty* )), this,
+  connect(transport_property_, SIGNAL( requestOptions( EnumProperty* )), this,
           SLOT( fillTransportOptionList( EnumProperty* )));
 
   queue_size_property_ = new IntProperty( "Queue Size", 2,
@@ -73,8 +69,7 @@ StereoImageDisplayBase::StereoImageDisplayBase() :
                                           this, SLOT( updateLeftQueueSize() ));
   queue_size_property_->setMin( 1 );
 
-  left_transport_property_->setStdString("raw");
-  right_transport_property_->setStdString("raw");
+  transport_property_->setStdString("raw");
 
 }
 
@@ -93,7 +88,7 @@ void StereoImageDisplayBase::setLeftTopic( const QString &topic, const QString &
 {
   if ( datatype == ros::message_traits::datatype<sensor_msgs::Image>() )
   {
-    left_transport_property_->setStdString( "raw" );
+    transport_property_->setStdString( "raw" );
     left_topic_property_->setString( topic );
   }
   else
@@ -108,8 +103,7 @@ void StereoImageDisplayBase::setLeftTopic( const QString &topic, const QString &
     QString transport = topic.mid(index + 1);
     QString base_topic = topic.mid(0, index);
 
-    left_transport_property_->setString( transport );
-    left_topic_property_->setString( base_topic );
+    transport_property_->setString( transport );
   }
 }
 
@@ -117,7 +111,7 @@ void StereoImageDisplayBase::setRightTopic( const QString &topic, const QString 
 {
   if ( datatype == ros::message_traits::datatype<sensor_msgs::Image>() )
   {
-    right_transport_property_->setStdString( "raw" );
+    transport_property_->setStdString( "raw" );
     right_topic_property_->setString( topic );
   }
   else
@@ -132,7 +126,7 @@ void StereoImageDisplayBase::setRightTopic( const QString &topic, const QString 
     QString transport = topic.mid(index + 1);
     QString base_topic = topic.mid(0, index);
 
-    right_transport_property_->setString( transport );
+    transport_property_->setString( transport );
     right_topic_property_->setString( base_topic );
   }
 }
@@ -185,20 +179,20 @@ void StereoImageDisplayBase::subscribe()
     left_sub_.reset(new image_transport::SubscriberFilter());
     right_sub_.reset(new image_transport::SubscriberFilter());
 
-    if (!left_topic_property_->getTopicStd().empty() && !left_transport_property_->getStdString().empty() &&
-        !right_topic_property_->getTopicStd().empty() && !right_transport_property_->getStdString().empty() )
+    if (!left_topic_property_->getTopicStd().empty() && !transport_property_->getStdString().empty() &&
+        !right_topic_property_->getTopicStd().empty() && !transport_property_->getStdString().empty() )
     {
       left_sub_->subscribe(
           *it_, 
           left_topic_property_->getTopicStd(),
           (uint32_t)queue_size_property_->getInt(),
-          image_transport::TransportHints(left_transport_property_->getStdString()));
+          image_transport::TransportHints(transport_property_->getStdString()));
 
       right_sub_->subscribe(
           *it_, 
           right_topic_property_->getTopicStd(),
           (uint32_t)queue_size_property_->getInt(),
-          image_transport::TransportHints(right_transport_property_->getStdString()));
+          image_transport::TransportHints(transport_property_->getStdString()));
 
       if (targetFrame_.empty())
       {
