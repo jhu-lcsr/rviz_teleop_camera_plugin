@@ -1,4 +1,4 @@
-<library path="lib/librviz_plugin_tutorials">
+<library path="lib/librviz_stereo_camera_plugin">
   <class name="rviz_stereo_camera_plugin/StereoImageDisplay"
     type="rviz_stereo_camera_plugin::StereoImageDisplay"
     base_class_type="rviz::Display">

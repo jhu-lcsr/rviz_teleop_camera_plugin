@@ -62,32 +62,32 @@ class StereoImageRenderPanel : public rviz::RenderPanel
   {
   public:
     StereoImageRenderPanel(
-        Ogre::Rectangle2D* screen_rect,
-        const std::string &left_name, 
-        const std::string &right_name) :
+        Ogre::Rectangle2D* left_rect,
+        Ogre::Rectangle2D* right_rect) :
       rviz::RenderPanel(),
-      screen_rect_(screen_rect),
-      left_name_(left_name),
-      right_name_(right_name)
+      left_rect_(left_rect),
+      right_rect_(right_rect)
     { }
 
   protected:
     void preViewportUpdate(
         const Ogre::RenderTargetViewportEvent& evt)
     {
+      rviz::RenderPanel::preViewportUpdate(evt);
       Ogre::Viewport* viewport = evt.source;
 
       if (viewport == this->getViewport()) {
         // Set texture to left image
-        screen_rect_->setMaterial(left_name_);
+        left_rect_->setVisible(true);
+        right_rect_->setVisible(false);
       } else {
         // Set texture to right image
-        screen_rect_->setMaterial(right_name_);
+        left_rect_->setVisible(false);
+        right_rect_->setVisible(true);
       }
     }
 
-    Ogre::Rectangle2D* screen_rect_;
-    std::string left_name_, right_name_;
+    Ogre::Rectangle2D *left_rect_, *right_rect_;
   };
 
 StereoImageDisplay::StereoImageDisplay()
@@ -142,9 +142,13 @@ void StereoImageDisplay::onInitialize()
     std::stringstream ss;
     ss << "StereoImageDisplayObject" << count++;
 
-    screen_rect_ = new Ogre::Rectangle2D(true);
-    screen_rect_->setRenderQueueGroup(Ogre::RENDER_QUEUE_OVERLAY - 1);
-    screen_rect_->setCorners(-1.0f, 1.0f, 1.0f, -1.0f);
+    left_screen_rect_ = new Ogre::Rectangle2D(true);
+    left_screen_rect_->setRenderQueueGroup(Ogre::RENDER_QUEUE_OVERLAY - 1);
+    left_screen_rect_->setCorners(-1.0f, 1.0f, 1.0f, -1.0f);
+
+    right_screen_rect_ = new Ogre::Rectangle2D(true);
+    right_screen_rect_->setRenderQueueGroup(Ogre::RENDER_QUEUE_OVERLAY - 1);
+    right_screen_rect_->setCorners(-1.0f, 1.0f, 1.0f, -1.0f);
 
     ss << "Material";
     create_material(ss.str() + "Left", left_texture_, left_material_);
@@ -153,15 +157,19 @@ void StereoImageDisplay::onInitialize()
     Ogre::AxisAlignedBox aabInf;
     aabInf.setInfinite();
 
-    screen_rect_->setBoundingBox(aabInf);
-    screen_rect_->setMaterial(left_material_->getName());
-    img_scene_node_->attachObject(screen_rect_);
+    left_screen_rect_->setBoundingBox(aabInf);
+    left_screen_rect_->setMaterial(left_material_->getName());
+    img_scene_node_->attachObject(left_screen_rect_);
+
+    right_screen_rect_->setBoundingBox(aabInf);
+    right_screen_rect_->setMaterial(right_material_->getName());
+    img_scene_node_->attachObject(right_screen_rect_);
   }
 
   render_panel_ = new StereoImageRenderPanel(
-      screen_rect_,
-      left_material_->getName(), 
-      right_material_->getName());
+      left_screen_rect_,
+      right_screen_rect_);
+
   render_panel_->getRenderWindow()->setAutoUpdated(false);
   render_panel_->getRenderWindow()->setActive( false );
 
@@ -173,6 +181,7 @@ void StereoImageDisplay::onInitialize()
   render_panel_->setAutoRender(false);
   render_panel_->setOverlaysEnabled(false);
   render_panel_->getCamera()->setNearClipDistance( 0.01f );
+  render_panel_->enableStereo(true);
 
   updateNormalizeOptions();
 }
@@ -182,7 +191,8 @@ StereoImageDisplay::~StereoImageDisplay()
   if ( initialized() )
   {
     delete render_panel_;
-    delete screen_rect_;
+    delete left_screen_rect_;
+    delete right_screen_rect_;
     img_scene_node_->getParentSceneNode()->removeAndDestroyChild( img_scene_node_->getName() );
   }
 }
@@ -237,19 +247,15 @@ void StereoImageDisplay::clear()
   }
 }
 
-void StereoImageDisplay::update( float wall_dt, float ros_dt )
+void resize(StereoImageRenderPanel *render_panel, ROSImageTexture &texture, Ogre::Rectangle2D *screen_rect)
 {
-  try
-  {
-    left_texture_.update();
-    right_texture_.update();
 
     //make sure the aspect ratio of the image is preserved
-    float win_width = render_panel_->width();
-    float win_height = render_panel_->height();
+    float win_width = render_panel->width();
+    float win_height = render_panel->height();
 
-    float img_width = left_texture_.getWidth();
-    float img_height = left_texture_.getHeight();
+    float img_width = texture.getWidth();
+    float img_height = texture.getHeight();
 
     if ( img_width != 0 && img_height != 0 && win_width !=0 && win_height != 0 )
     {
@@ -258,13 +264,24 @@ void StereoImageDisplay::update( float wall_dt, float ros_dt )
 
       if ( img_aspect > win_aspect )
       {
-        screen_rect_->setCorners(-1.0f, 1.0f * win_aspect/img_aspect, 1.0f, -1.0f * win_aspect/img_aspect, false);
+        screen_rect->setCorners(-1.0f, 1.0f * win_aspect/img_aspect, 1.0f, -1.0f * win_aspect/img_aspect, false);
       }
       else
       {
-        screen_rect_->setCorners(-1.0f * img_aspect/win_aspect, 1.0f, 1.0f * img_aspect/win_aspect, -1.0f, false);
+        screen_rect->setCorners(-1.0f * img_aspect/win_aspect, 1.0f, 1.0f * img_aspect/win_aspect, -1.0f, false);
       }
     }
+}
+
+void StereoImageDisplay::update( float wall_dt, float ros_dt )
+{
+  try
+  {
+    left_texture_.update();
+    right_texture_.update();
+
+    resize(render_panel_, left_texture_, left_screen_rect_);
+    resize(render_panel_, right_texture_, right_screen_rect_);
 
     render_panel_->getRenderWindow()->update();
   }

@@ -93,7 +93,9 @@ private:
 
   Ogre::SceneManager* img_scene_manager_;
   Ogre::SceneNode* img_scene_node_;
-  Ogre::Rectangle2D* screen_rect_;
+  Ogre::Rectangle2D 
+    *left_screen_rect_,
+    *right_screen_rect_;
   Ogre::MaterialPtr 
     left_material_,
     right_material_;
