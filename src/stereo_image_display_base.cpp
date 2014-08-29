@@ -30,6 +30,7 @@
 #include <boost/algorithm/string/erase.hpp>
 #include <boost/foreach.hpp>
 #include <boost/shared_ptr.hpp>
+#include <boost/typeof/std/utility.hpp>
 
 #include <pluginlib/class_loader.h>
 
@@ -37,9 +38,7 @@
 
 #include "stereo_image_display_base.h"
 
-using namespace rviz;
-
-namespace rviz_stereo_camera_plugin
+namespace rviz
 {
 
 StereoImageDisplayBase::StereoImageDisplayBase() :
@@ -56,17 +55,21 @@ StereoImageDisplayBase::StereoImageDisplayBase() :
                                                QString::fromStdString(ros::message_traits::datatype<sensor_msgs::Image>()),
                                                "sensor_msgs::Image topic to subscribe to.", this, SLOT( updateTopics() ));
 
-  transport_property_ = new EnumProperty("Transport Hint", "raw", "Preferred method of sending images.", this,
-                                         SLOT( updateTopics() ));
+  transport_property_ = new EnumProperty(
+      "Transport Hint", "raw", "Preferred method of sending images.", 
+      this, SLOT( updateTopics() ));
 
-  connect(transport_property_, SIGNAL( requestOptions( EnumProperty* )), this,
-          SLOT( fillTransportOptionList( EnumProperty* )));
+  bool ok = connect(transport_property_,
+          SIGNAL( requestOptions( EnumProperty* )), 
+          this, SLOT( fillTransportOptionList( EnumProperty* )));
+
+  Q_ASSERT(ok);
 
   queue_size_property_ = new IntProperty( "Queue Size", 2,
                                           "Advanced: set the size of the incoming message queue.  Increasing this "
                                           "is useful if your incoming TF data is delayed significantly from your"
                                           " image data, but it can greatly increase memory usage if the messages are big.",
-                                          this, SLOT( updateLeftQueueSize() ));
+                                          this, SLOT( updateQueueSize() ));
   queue_size_property_->setMin( 1 );
 
   transport_property_->setStdString("raw");
@@ -176,8 +179,10 @@ void StereoImageDisplayBase::subscribe()
 
     tf_filter_.reset();
 
-    left_sub_.reset(new image_transport::SubscriberFilter());
-    right_sub_.reset(new image_transport::SubscriberFilter());
+    if(!left_sub_)
+      left_sub_.reset(new image_transport::SubscriberFilter());
+    if(!right_sub_)
+      right_sub_.reset(new image_transport::SubscriberFilter());
 
     if (!left_topic_property_->getTopicStd().empty() && !transport_property_->getStdString().empty() &&
         !right_topic_property_->getTopicStd().empty() && !transport_property_->getStdString().empty() )
@@ -196,8 +201,11 @@ void StereoImageDisplayBase::subscribe()
 
       if (targetFrame_.empty())
       {
-        sync_.reset(new StereoSyncPolicy(*left_sub_, *right_sub_, 10));
-        sync_->registerCallback(boost::bind(&StereoImageDisplayBase::incomingMessages, this, _1, _2));
+        if(!sync_) {
+          sync_.reset(new StereoSyncPolicy(*left_sub_, *right_sub_, 10));
+          BOOST_AUTO(f,boost::bind(&StereoImageDisplayBase::incomingMessages, this, _1, _2));
+          sync_->registerCallback(f);
+        }
       }
       else
       {
@@ -227,8 +235,8 @@ void StereoImageDisplayBase::subscribe()
 void StereoImageDisplayBase::unsubscribe()
 {
   tf_filter_.reset();
-  left_sub_.reset(new image_transport::SubscriberFilter());
-  right_sub_.reset(new image_transport::SubscriberFilter());
+  left_sub_->unsubscribe();
+  right_sub_->unsubscribe();
 }
 
 void StereoImageDisplayBase::fixedFrameChanged()
@@ -282,6 +290,7 @@ void StereoImageDisplayBase::updateTopics()
 
 void StereoImageDisplayBase::fillTransportOptionList(EnumProperty* property)
 {
+  ROS_WARN_STREAM("Filling stereo transport option list...");
   property->clearOptions();
 
   std::vector<std::string> choices;
@@ -314,6 +323,8 @@ void StereoImageDisplayBase::fillTransportOptionList(EnumProperty* property)
       if (transport_plugin_types_.find(transport_type) != transport_plugin_types_.end())
       {
         choices.push_back(transport_type);
+      } else {
+        ROS_WARN_STREAM("Not a transport type: " <<transport_type);
       }
     }
   }

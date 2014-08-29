@@ -53,9 +53,7 @@
 
 #include "stereo_image_display.h"
 
-using namespace rviz;
-
-namespace rviz_stereo_camera_plugin
+namespace rviz
 {
 
 class StereoImageRenderPanel : public rviz::RenderPanel
@@ -330,4 +328,4 @@ void StereoImageDisplay::processMessages(
 } // namespace rviz
 
 #include <pluginlib/class_list_macros.h>
-PLUGINLIB_EXPORT_CLASS( rviz_stereo_camera_plugin::StereoImageDisplay, rviz::Display )
+PLUGINLIB_EXPORT_CLASS( rviz::StereoImageDisplay, rviz::Display )

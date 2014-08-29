@@ -52,7 +52,7 @@
 
 #endif
 
-namespace rviz_stereo_camera_plugin
+namespace rviz
 {
 /** @brief Display subclass for subscribing and displaying to image messages.
  *
@@ -81,7 +81,7 @@ protected Q_SLOTS:
   virtual void updateQueueSize();
 
   /** @brief Fill list of available and working transport options */
-  void fillTransportOptionList(rviz::EnumProperty* property);
+  void fillTransportOptionList(EnumProperty* property);
 
 protected:
   virtual void onInitialize();

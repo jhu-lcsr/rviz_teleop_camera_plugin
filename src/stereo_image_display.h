@@ -53,7 +53,7 @@ class SceneNode;
 class Rectangle2D;
 }
 
-namespace rviz_stereo_camera_plugin
+namespace rviz
 {
 
   class StereoImageRenderPanel;
