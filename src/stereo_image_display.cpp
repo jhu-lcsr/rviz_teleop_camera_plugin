@@ -52,41 +52,10 @@
 #include <sensor_msgs/image_encodings.h>
 
 #include "stereo_image_display.h"
+#include "stereo_image_render_panel.h"
 
 namespace rviz
 {
-
-class StereoImageRenderPanel : public rviz::RenderPanel
-  {
-  public:
-    StereoImageRenderPanel(
-        Ogre::Rectangle2D* left_rect,
-        Ogre::Rectangle2D* right_rect) :
-      rviz::RenderPanel(),
-      left_rect_(left_rect),
-      right_rect_(right_rect)
-    { }
-
-  protected:
-    void preViewportUpdate(
-        const Ogre::RenderTargetViewportEvent& evt)
-    {
-      rviz::RenderPanel::preViewportUpdate(evt);
-      Ogre::Viewport* viewport = evt.source;
-
-      if (viewport == this->getViewport()) {
-        // Set texture to left image
-        left_rect_->setVisible(true);
-        right_rect_->setVisible(false);
-      } else {
-        // Set texture to right image
-        left_rect_->setVisible(false);
-        right_rect_->setVisible(true);
-      }
-    }
-
-    Ogre::Rectangle2D *left_rect_, *right_rect_;
-  };
 
 StereoImageDisplay::StereoImageDisplay()
   : StereoImageDisplayBase()

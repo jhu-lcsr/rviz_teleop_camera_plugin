@@ -45,6 +45,7 @@
 # include <rviz/properties/int_property.h>
 
 #include "stereo_image_display_base.h"
+#include "stereo_image_render_panel.h"
 #endif
 
 namespace Ogre
@@ -55,8 +56,6 @@ class Rectangle2D;
 
 namespace rviz
 {
-
-  class StereoImageRenderPanel;
 
 /**
  * \class StereoImageDisplay

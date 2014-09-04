@@ -17,6 +17,7 @@ add_definitions(-DQT_NO_KEYWORDS)
 ## Here we specify which header files need to be run through "moc",
 ## Qt's meta-object compiler.
 qt4_wrap_cpp(MOC_FILES
+  src/stereo_image_render_panel.h
   src/stereo_image_display_base.h
   src/stereo_image_display.h
   src/stereo_camera_display.h
@@ -25,6 +26,7 @@ qt4_wrap_cpp(MOC_FILES
 ## Here we specify the list of source files, including the output of
 ## the previous command which is stored in ``${MOC_FILES}``.
 set(SOURCE_FILES
+  src/stereo_image_render_panel.cpp
   src/stereo_image_display_base.cpp
   src/stereo_image_display.cpp
   src/stereo_camera_display.cpp
