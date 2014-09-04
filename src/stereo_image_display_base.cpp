@@ -45,8 +45,10 @@ StereoImageDisplayBase::StereoImageDisplayBase() :
     Display()
     , left_sub_()
     , right_sub_()
-    , tf_filter_()
+    , left_tf_filter_()
+    , right_tf_filter_()
     , messages_received_(0)
+    , use_approx_sync_(false)
 {
   left_topic_property_ = new RosTopicProperty("Left Image Topic", "",
                                               QString::fromStdString(ros::message_traits::datatype<sensor_msgs::Image>()),
@@ -71,6 +73,10 @@ StereoImageDisplayBase::StereoImageDisplayBase() :
                                           " image data, but it can greatly increase memory usage if the messages are big.",
                                           this, SLOT( updateQueueSize() ));
   queue_size_property_->setMin( 1 );
+
+  approx_sync_property_ = new BoolProperty( "Approximate Sync", false,
+                                          "Advanced: set this to true if your timestamps aren't synchronized.",
+                                          this, SLOT( updateApproxSync() ));
 
   transport_property_->setStdString("raw");
 
@@ -155,17 +161,28 @@ void StereoImageDisplayBase::incomingMessages(
 void StereoImageDisplayBase::reset()
 {
   Display::reset();
-  if (tf_filter_)
-    tf_filter_->clear();
+  if (left_tf_filter_ && right_tf_filter_) {
+    left_tf_filter_->clear();
+    right_tf_filter_->clear();
+  }
   messages_received_ = 0;
 }
 
 void StereoImageDisplayBase::updateQueueSize()
 {
   uint32_t size = queue_size_property_->getInt();
-  if (tf_filter_)
-    tf_filter_->setQueueSize(size);
+  if (left_tf_filter_ && right_tf_filter_) {
+    left_tf_filter_->setQueueSize(size);
+    right_tf_filter_->setQueueSize(size);
+  }
 }
+
+void StereoImageDisplayBase::updateApproxSync()
+{
+  use_approx_sync_ = approx_sync_property_->getBool();
+  this->updateTopics();
+}
+
 
 void StereoImageDisplayBase::subscribe()
 {
@@ -177,7 +194,8 @@ void StereoImageDisplayBase::subscribe()
   try
   {
 
-    tf_filter_.reset();
+    left_tf_filter_.reset();
+    right_tf_filter_.reset();
 
     if(!left_sub_)
       left_sub_.reset(new image_transport::SubscriberFilter());
@@ -201,10 +219,18 @@ void StereoImageDisplayBase::subscribe()
 
       if (targetFrame_.empty())
       {
-        if(!sync_) {
-          sync_.reset(new StereoSyncPolicy(*left_sub_, *right_sub_, 10));
-          BOOST_AUTO(f,boost::bind(&StereoImageDisplayBase::incomingMessages, this, _1, _2));
-          sync_->registerCallback(f);
+        if(use_approx_sync_) {
+          if(!approx_sync_) {
+            approx_sync_.reset(new StereoApproxSync(StereoApproxSyncPolicy(10), *left_sub_, *right_sub_));
+            BOOST_AUTO(f,boost::bind(&StereoImageDisplayBase::incomingMessages, this, _1, _2));
+            approx_sync_->registerCallback(f);
+          } 
+        } else {
+          if(!sync_) {
+            sync_.reset(new StereoSync(*left_sub_, *right_sub_, 10));
+            BOOST_AUTO(f,boost::bind(&StereoImageDisplayBase::incomingMessages, this, _1, _2));
+            sync_->registerCallback(f);
+          }
         }
       }
       else
@@ -213,13 +239,39 @@ void StereoImageDisplayBase::subscribe()
         // or maybe pipe output of tf messagefilter into time synchronizer?
         // http://docs.ros.org/hydro/api/tf/html/c++/classtf_1_1MessageFilter.html#abcaaa2112aede9acd8cddbd2acda75e2
 
-        //tf_filter_.reset( new tf::MessageFilter<sensor_msgs::Image>(*sub_, (tf::Transformer&)*(context_->getTFClient()), targetFrame_, (uint32_t)queue_size_property_->getInt(), update_nh_));
+        left_tf_filter_.reset(
+            new tf::MessageFilter<sensor_msgs::Image>(
+                *left_sub_,
+                (tf::Transformer&)*(context_->getTFClient()), 
+                targetFrame_, 
+                (uint32_t)queue_size_property_->getInt(), 
+                update_nh_));
+        right_tf_filter_.reset(
+            new tf::MessageFilter<sensor_msgs::Image>(
+                *left_sub_,
+                (tf::Transformer&)*(context_->getTFClient()), 
+                targetFrame_, 
+                (uint32_t)queue_size_property_->getInt(), 
+                update_nh_));
+
+
         //tf_filter_->registerCallback(boost::bind(&StereoImageDisplayBase::incomingMessage, this, _1));
+        if(use_approx_sync_) {
+          if(!tf_approx_sync_) {
+            tf_approx_sync_.reset(new TFStereoApproxSync(TFStereoApproxSyncPolicy(10), *left_tf_filter_, *right_tf_filter_));
+            tf_approx_sync_->registerCallback(boost::bind(&StereoImageDisplayBase::incomingMessages, this, _1, _2));
+          } 
+        } else {
+          if(!tf_sync_) {
+            tf_sync_.reset(new TFStereoSync(*left_tf_filter_, *right_tf_filter_, 10));
+            tf_sync_->registerCallback(boost::bind(&StereoImageDisplayBase::incomingMessages, this, _1, _2));
+          }
+        }
       }
     }
     setStatus(StatusProperty::Ok, "Topic", "OK");
   }
-  catch (ros::Exception& e)
+  catch ( ros::Exception& e)
   {
     setStatus(StatusProperty::Error, "Topic", QString("Error subscribing: ") + e.what());
   }
@@ -234,16 +286,19 @@ void StereoImageDisplayBase::subscribe()
 
 void StereoImageDisplayBase::unsubscribe()
 {
-  tf_filter_.reset();
-  left_sub_->unsubscribe();
-  right_sub_->unsubscribe();
+  if (left_tf_filter_ && right_tf_filter_ && left_sub_ && right_sub_) {
+    left_tf_filter_.reset();
+    right_tf_filter_.reset();
+    left_sub_->unsubscribe();
+    right_sub_->unsubscribe();
+  }
 }
 
 void StereoImageDisplayBase::fixedFrameChanged()
 {
-  if (tf_filter_)
-  {
-    tf_filter_->setTargetFrame(fixed_frame_.toStdString());
+  if (left_tf_filter_ && right_tf_filter_) {
+    left_tf_filter_->setTargetFrame(fixed_frame_.toStdString());
+    right_tf_filter_->setTargetFrame(fixed_frame_.toStdString());
     reset();
   }
 }

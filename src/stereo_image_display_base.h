@@ -54,6 +54,7 @@
 
 namespace rviz
 {
+
 /** @brief Display subclass for subscribing and displaying to image messages.
  *
  * This class brings together some common things used for subscribing and displaying image messages in Display
@@ -79,6 +80,7 @@ protected Q_SLOTS:
 
   /** @brief Update queue size of tf filter  */
   virtual void updateQueueSize();
+  virtual void updateApproxSync();
 
   /** @brief Fill list of available and working transport options */
   void fillTransportOptionList(EnumProperty* property);
@@ -122,11 +124,13 @@ protected:
   boost::shared_ptr<image_transport::SubscriberFilter> 
     left_sub_,
     right_sub_;
-  boost::shared_ptr<tf::MessageFilter<sensor_msgs::Image> > tf_filter_;
+  boost::shared_ptr<tf::MessageFilter<sensor_msgs::Image> > left_tf_filter_;
+  boost::shared_ptr<tf::MessageFilter<sensor_msgs::Image> > right_tf_filter_;
 
   std::string targetFrame_;
 
   uint32_t messages_received_;
+  bool use_approx_sync_;
 
   rviz::RosTopicProperty 
     *left_topic_property_,
@@ -134,14 +138,35 @@ protected:
   rviz::EnumProperty 
     *transport_property_;
   rviz::IntProperty *queue_size_property_;
+  rviz::BoolProperty *approx_sync_property_;
 
   std::string transport_;
 
   std::set<std::string> transport_plugin_types_;
 
-  typedef message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::Image> StereoSyncPolicy;
+  typedef message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::Image>
+    StereoSync;
+  typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image>
+    StereoApproxSyncPolicy;
+  typedef message_filters::Synchronizer<StereoApproxSyncPolicy> 
+    StereoApproxSync;
 
-  boost::shared_ptr<StereoSyncPolicy> sync_;
+  boost::shared_ptr<StereoSync> sync_;
+  boost::shared_ptr<StereoApproxSync> approx_sync_;
+
+  typedef message_filters::TimeSynchronizer<
+    sensor_msgs::Image, 
+    sensor_msgs::Image>
+    TFStereoSync;
+  typedef message_filters::sync_policies::ApproximateTime<
+    sensor_msgs::Image, 
+    sensor_msgs::Image>
+    TFStereoApproxSyncPolicy;
+  typedef message_filters::Synchronizer<TFStereoApproxSyncPolicy> 
+    TFStereoApproxSync;
+
+  boost::shared_ptr<TFStereoSync> tf_sync_;
+  boost::shared_ptr<TFStereoApproxSync> tf_approx_sync_;
 };
 
 } // end namespace rviz

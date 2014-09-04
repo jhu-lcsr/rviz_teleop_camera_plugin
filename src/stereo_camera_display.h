@@ -27,8 +27,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef RVIZ_CAMERA_DISPLAY_H
-#define RVIZ_CAMERA_DISPLAY_H
+#ifndef RVIZ_STEREO_CAMERA_DISPLAY_H
+#define RVIZ_STEREO_CAMERA_DISPLAY_H
 
 #include <QObject>
 
@@ -66,19 +66,26 @@ class RosTopicProperty;
 class DisplayGroupVisibilityProperty;
 }
 
-namespace rviz_stereo_camera_plugin
+namespace rviz
 {
 
 /**
- * \class CameraDisplay
+ * \class StereoCameraDisplay
  *
  */
-class CameraDisplay: public ImageDisplayBase, public Ogre::RenderTargetListener
+class StereoCameraDisplay: public ImageDisplayBase, public Ogre::RenderTargetListener
 {
 Q_OBJECT
 public:
-  CameraDisplay();
-  virtual ~CameraDisplay();
+  /** \brief Create additional rviz panel options
+   * - image position
+   * - overlay alpha
+   * - image zoom
+   */
+  StereoCameraDisplay();
+
+  /** \brief deletes and re-sets orgre resources **/
+  virtual ~StereoCameraDisplay();
 
   // Overrides from Display
   virtual void onInitialize();
@@ -120,12 +127,16 @@ private:
   void clear();
   void updateStatus();
 
+  // Scene node for camera image overlaying
   Ogre::SceneNode* bg_scene_node_;
+  // Scene node for camera image underlaying
   Ogre::SceneNode* fg_scene_node_;
 
+  // Image rect for camera image underlaying
   Ogre::Rectangle2D* bg_screen_rect_;
   Ogre::MaterialPtr bg_material_;
 
+  // Image rect for camera image overlaying
   Ogre::Rectangle2D* fg_screen_rect_;
   Ogre::MaterialPtr fg_material_;
 

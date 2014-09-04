@@ -3,7 +3,15 @@
     type="rviz::StereoImageDisplay"
     base_class_type="rviz::Display">
     <description>
-      Displays direction and scale of accelerations from sensor_msgs/Imu messages.
+      Displays a stereo image for 3d-capable monitors.
+    </description>
+    <message_type>sensor_msgs/Image</message_type>
+  </class>
+  <class name="rviz/StereoCameraDisplay"
+    type="rviz::StereoCameraDisplay"
+    base_class_type="rviz::Display">
+    <description>
+      Displays a stereo image and synthetic 3d overlay for 3d-capable monitors.
     </description>
     <message_type>sensor_msgs/Image</message_type>
   </class>

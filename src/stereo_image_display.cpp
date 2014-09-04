@@ -107,7 +107,10 @@ StereoImageDisplay::StereoImageDisplay()
   got_float_image_ = false;
 }
 
-void create_material(const std::string &material_name, ROSImageTexture &texture, Ogre::MaterialPtr &material) 
+static void create_material(
+    const std::string &material_name, 
+    ROSImageTexture &texture, 
+    Ogre::MaterialPtr &material) 
 {
   material = Ogre::MaterialManager::getSingleton().create( material_name, Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME );
   material->setSceneBlending( Ogre::SBT_REPLACE );

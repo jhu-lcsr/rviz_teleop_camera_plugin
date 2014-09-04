@@ -19,6 +19,7 @@ add_definitions(-DQT_NO_KEYWORDS)
 qt4_wrap_cpp(MOC_FILES
   src/stereo_image_display_base.h
   src/stereo_image_display.h
+  src/stereo_camera_display.h
   )
 
 ## Here we specify the list of source files, including the output of
@@ -26,6 +27,7 @@ qt4_wrap_cpp(MOC_FILES
 set(SOURCE_FILES
   src/stereo_image_display_base.cpp
   src/stereo_image_display.cpp
+  src/stereo_camera_display.cpp
   ${MOC_FILES}
   )
 
