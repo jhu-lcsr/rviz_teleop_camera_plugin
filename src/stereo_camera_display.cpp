@@ -60,6 +60,7 @@
 #include <image_transport/camera_common.h>
 
 #include "stereo_camera_display.h"
+#include "stereo_image_render_panel.h"
 
 namespace rviz
 {
@@ -79,11 +80,14 @@ bool validateFloats(const sensor_msgs::CameraInfo& msg)
 }
 
 StereoCameraDisplay::StereoCameraDisplay()
-  : ImageDisplayBase()
-  , texture_()
+  : StereoImageDisplayBase()
+  , left_texture_()
+  , right_texture_()
   , render_panel_( 0 )
-  , caminfo_tf_filter_( 0 )
-  , new_caminfo_( false )
+  , left_caminfo_tf_filter_( 0 )
+  , right_caminfo_tf_filter_( 0 )
+  , left_new_caminfo_( false )
+  , right_new_caminfo_( false )
   , force_render_( false )
   , caminfo_ok_(false)
 {
@@ -114,22 +118,25 @@ StereoCameraDisplay::~StereoCameraDisplay()
     render_panel_->getRenderWindow()->removeListener( this );
 
     unsubscribe();
-    caminfo_tf_filter_->clear();
-
+    left_caminfo_tf_filter_->clear();
+    right_caminfo_tf_filter_->clear();
 
     //workaround. delete results in a later crash
-    render_panel_->hide();
-    //delete render_panel_;
+    //render_panel_->hide();
+    delete render_panel_;
 
     // Remove Ogre rects and scene nodes
-    delete bg_screen_rect_;
-    delete fg_screen_rect_;
+    delete left_bg_screen_rect_;
+    delete right_bg_screen_rect_;
+    delete left_fg_screen_rect_;
+    delete right_fg_screen_rect_;
 
     bg_scene_node_->getParentSceneNode()->removeAndDestroyChild( bg_scene_node_->getName() );
     fg_scene_node_->getParentSceneNode()->removeAndDestroyChild( fg_scene_node_->getName() );
 
     // Clean up
-    delete caminfo_tf_filter_;
+    delete left_caminfo_tf_filter_;
+    delete right_caminfo_tf_filter_;
 
     // Disable ogre rendering of this context
     context_->visibilityBits()->freeBits(vis_bit_);
@@ -163,14 +170,34 @@ static void create_material(
   material->setSceneBlending( Ogre::SBT_REPLACE );
 }
 
+static void create_rect(
+    Ogre::Rectangle2D* &screen_rect,
+    Ogre::SceneNode* &scene_node,
+    Ogre::MaterialPtr &material)
+{
+  screen_rect = new Ogre::Rectangle2D(true);
+  screen_rect->setCorners(-1.0f, 1.0f, 1.0f, -1.0f);
+
+  screen_rect->setRenderQueueGroup(Ogre::RENDER_QUEUE_BACKGROUND);
+  screen_rect->setBoundingBox(Ogre::AxisAlignedBox::BOX_INFINITE);
+  screen_rect->setMaterial(material->getName());
+
+  scene_node->attachObject(screen_rect);
+  scene_node->setVisible(false);
+}
+
 void StereoCameraDisplay::onInitialize()
 {
-  ImageDisplayBase::onInitialize();
+  StereoImageDisplayBase::onInitialize();
 
   // TODO: add a second tf filter, note that this is only a filter for
   // CameraInfo and not the sensor_msgs::Image message
   // TODO: pipe them into a(n) (approximate)synchronizer
-  caminfo_tf_filter_ = new tf::MessageFilter<sensor_msgs::CameraInfo>(
+  left_caminfo_tf_filter_ = new tf::MessageFilter<sensor_msgs::CameraInfo>(
+      *context_->getTFClient(), fixed_frame_.toStdString(),
+      queue_size_property_->getInt(), update_nh_ );
+
+  right_caminfo_tf_filter_ = new tf::MessageFilter<sensor_msgs::CameraInfo>(
       *context_->getTFClient(), fixed_frame_.toStdString(),
       queue_size_property_->getInt(), update_nh_ );
 
@@ -178,6 +205,7 @@ void StereoCameraDisplay::onInitialize()
   bg_scene_node_ = scene_node_->createChildSceneNode();
   fg_scene_node_ = scene_node_->createChildSceneNode();
 
+  // Create underlay and overlay rects for drawing the image
   {
     // Create material name
     static int count = 0;
@@ -186,37 +214,31 @@ void StereoCameraDisplay::onInitialize()
     mat_name_ss << "Material";
 
     // create the image underlay material
-    create_material(mat_name_ss.str()+"_bg", texture_, bg_material_);
-    // create the image overlay material
-    create_material(mat_name_ss.str()+"_fg", texture_, fg_material_);
-    fg_material_->setSceneBlending( Ogre::SBT_TRANSPARENT_ALPHA );
+    create_material(mat_name_ss.str()+"_bg_left", left_texture_, left_bg_material_);
+    create_material(mat_name_ss.str()+"_bg_right", right_texture_, right_bg_material_);
 
     // create the image underlay rect
-    bg_screen_rect_ = new Ogre::Rectangle2D(true);
-    bg_screen_rect_->setCorners(-1.0f, 1.0f, 1.0f, -1.0f);
+    create_rect(left_bg_screen_rect_, bg_scene_node_, left_bg_material_);
+    create_rect(right_bg_screen_rect_, bg_scene_node_, right_bg_material_);
+    
+    // create the image overlay material
+    create_material(mat_name_ss.str()+"_fg_left", left_texture_, left_fg_material_);
+    left_fg_material_->setSceneBlending( Ogre::SBT_TRANSPARENT_ALPHA );
+    create_material(mat_name_ss.str()+"_fg_right", right_texture_, right_fg_material_);
+    right_fg_material_->setSceneBlending( Ogre::SBT_TRANSPARENT_ALPHA );
 
-    bg_screen_rect_->setRenderQueueGroup(Ogre::RENDER_QUEUE_BACKGROUND);
-    bg_screen_rect_->setBoundingBox(Ogre::AxisAlignedBox::BOX_INFINITE);
-    bg_screen_rect_->setMaterial(bg_material_->getName());
-
-    bg_scene_node_->attachObject(bg_screen_rect_);
-    bg_scene_node_->setVisible(false);
-
-    // create image overlay rect
-    fg_screen_rect_ = new Ogre::Rectangle2D(true);
-    fg_screen_rect_->setCorners(-1.0f, 1.0f, 1.0f, -1.0f);
-
-    fg_screen_rect_->setRenderQueueGroup(Ogre::RENDER_QUEUE_OVERLAY - 1);
-    fg_screen_rect_->setBoundingBox(Ogre::AxisAlignedBox::BOX_INFINITE);
-    fg_screen_rect_->setMaterial(fg_material_->getName());
-
-    fg_scene_node_->attachObject(fg_screen_rect_);
-    fg_scene_node_->setVisible(false);
+    // create the image overlay rect
+    create_rect(left_fg_screen_rect_, fg_scene_node_, left_fg_material_);
+    create_rect(right_fg_screen_rect_, fg_scene_node_, right_fg_material_);
   }
 
   updateAlpha();
 
-  render_panel_ = new RenderPanel();
+  render_panel_ = new StereoImageRenderPanel();
+  render_panel_->addLeftRect(left_bg_screen_rect_);
+  render_panel_->addLeftRect(left_fg_screen_rect_);
+  render_panel_->addRightRect(right_bg_screen_rect_);
+  render_panel_->addRightRect(right_fg_screen_rect_);
   render_panel_->getRenderWindow()->addListener( this );
   render_panel_->getRenderWindow()->setAutoUpdated(false);
   render_panel_->getRenderWindow()->setActive( false );
@@ -229,12 +251,16 @@ void StereoCameraDisplay::onInitialize()
   render_panel_->setOverlaysEnabled(false);
   render_panel_->getCamera()->setNearClipDistance( 0.01f );
 
-  caminfo_tf_filter_->connectInput(caminfo_sub_);
-  caminfo_tf_filter_->registerCallback(boost::bind(&StereoCameraDisplay::caminfoCallback, this, _1));
+  left_caminfo_tf_filter_->connectInput(left_caminfo_sub_);
+  left_caminfo_tf_filter_->registerCallback(boost::bind(&StereoCameraDisplay::leftCaminfoCallback, this, _1));
+
+  right_caminfo_tf_filter_->connectInput(right_caminfo_sub_);
+  right_caminfo_tf_filter_->registerCallback(boost::bind(&StereoCameraDisplay::rightCaminfoCallback, this, _1));
   //context_->getFrameManager()->registerFilterForTransformStatusCheck(caminfo_tf_filter_, this);
 
   vis_bit_ = context_->visibilityBits()->allocBit();
   render_panel_->getViewport()->setVisibilityMask( vis_bit_ );
+  render_panel_->getRightViewport()->setVisibilityMask( vis_bit_ );
 
   visibility_property_ = new DisplayGroupVisibilityProperty(
       vis_bit_, context_->getRootDisplayGroup(), this, "Visibility", true,
@@ -248,8 +274,8 @@ void StereoCameraDisplay::onInitialize()
 void StereoCameraDisplay::preRenderTargetUpdate(const Ogre::RenderTargetEvent& evt)
 {
   QString image_position = image_position_property_->getString();
-  bg_scene_node_->setVisible( caminfo_ok_ && (image_position == BACKGROUND || image_position == BOTH) );
-  fg_scene_node_->setVisible( caminfo_ok_ && (image_position == OVERLAY || image_position == BOTH) );
+  //bg_scene_node_->setVisible( caminfo_ok_ && (image_position == BACKGROUND || image_position == BOTH) );
+  //fg_scene_node_->setVisible( caminfo_ok_ && (image_position == OVERLAY || image_position == BOTH) );
 
   // set view flags on all displays
   visibility_property_->update();
@@ -276,22 +302,26 @@ void StereoCameraDisplay::onDisable()
 
 void StereoCameraDisplay::subscribe()
 {
-  if ( (!isEnabled()) || (topic_property_->getTopicStd().empty()) )
+  if ( (!isEnabled()) || (left_topic_property_->getTopicStd().empty()) || (right_topic_property_->getTopicStd().empty()) )
   {
     return;
   }
 
   std::string target_frame = fixed_frame_.toStdString();
-  ImageDisplayBase::enableTFFilter(target_frame);
+  StereoImageDisplayBase::enableTFFilter(target_frame);
 
-  ImageDisplayBase::subscribe();
+  StereoImageDisplayBase::subscribe();
 
-  std::string topic = topic_property_->getTopicStd();
-  std::string caminfo_topic = image_transport::getCameraInfoTopic(topic_property_->getTopicStd());
+  std::string left_topic = left_topic_property_->getTopicStd();
+  std::string left_caminfo_topic = image_transport::getCameraInfoTopic(left_topic_property_->getTopicStd());
+
+  std::string right_topic = right_topic_property_->getTopicStd();
+  std::string right_caminfo_topic = image_transport::getCameraInfoTopic(right_topic_property_->getTopicStd());
 
   try
   {
-    caminfo_sub_.subscribe( update_nh_, caminfo_topic, 1 );
+    left_caminfo_sub_.subscribe( update_nh_, left_caminfo_topic, 1 );
+    right_caminfo_sub_.subscribe( update_nh_, right_caminfo_topic, 1 );
     setStatus( StatusProperty::Ok, "Camera Info", "OK" );
   }
   catch( ros::Exception& e )
@@ -302,15 +332,14 @@ void StereoCameraDisplay::subscribe()
 
 void StereoCameraDisplay::unsubscribe()
 {
-  ImageDisplayBase::unsubscribe();
-  caminfo_sub_.unsubscribe();
+  StereoImageDisplayBase::unsubscribe();
+  left_caminfo_sub_.unsubscribe();
+  right_caminfo_sub_.unsubscribe();
 }
 
-void StereoCameraDisplay::updateAlpha()
+static void set_material_alpha(Ogre::MaterialPtr material, double alpha)
 {
-  float alpha = alpha_property_->getFloat();
-
-  Ogre::Pass* pass = fg_material_->getTechnique( 0 )->getPass( 0 );
+  Ogre::Pass* pass = material->getTechnique( 0 )->getPass( 0 );
   if( pass->getNumTextureUnitStates() > 0 )
   {
     Ogre::TextureUnitState* tex_unit = pass->getTextureUnitState( 0 );
@@ -318,9 +347,17 @@ void StereoCameraDisplay::updateAlpha()
   }
   else
   {
-    fg_material_->setAmbient( Ogre::ColourValue( 0.0f, 1.0f, 1.0f, alpha ));
-    fg_material_->setDiffuse( Ogre::ColourValue( 0.0f, 1.0f, 1.0f, alpha ));
+    material->setAmbient( Ogre::ColourValue( 0.0f, 1.0f, 1.0f, alpha ));
+    material->setDiffuse( Ogre::ColourValue( 0.0f, 1.0f, 1.0f, alpha ));
   }
+}
+
+void StereoCameraDisplay::updateAlpha()
+{
+  float alpha = alpha_property_->getFloat();
+
+  set_material_alpha(left_fg_material_, alpha);
+  set_material_alpha(right_fg_material_, alpha);
 
   force_render_ = true;
   context_->queueRender();
@@ -334,21 +371,25 @@ void StereoCameraDisplay::forceRender()
 
 void StereoCameraDisplay::updateQueueSize()
 {
-  caminfo_tf_filter_->setQueueSize( (uint32_t) queue_size_property_->getInt() );
-  ImageDisplayBase::updateQueueSize();
+  left_caminfo_tf_filter_->setQueueSize( (uint32_t) queue_size_property_->getInt() );
+  right_caminfo_tf_filter_->setQueueSize( (uint32_t) queue_size_property_->getInt() );
+  StereoImageDisplayBase::updateQueueSize();
 }
 
 void StereoCameraDisplay::clear()
 {
-  texture_.clear();
+  left_texture_.clear();
+  right_texture_.clear();
   force_render_ = true;
   context_->queueRender();
 
-  new_caminfo_ = false;
-  current_caminfo_.reset();
+  left_new_caminfo_ = false;
+  right_new_caminfo_ = false;
+  left_current_caminfo_.reset();
+  right_current_caminfo_.reset();
 
   setStatus( StatusProperty::Warn, "Camera Info",
-             "No CameraInfo received on [" + QString::fromStdString( caminfo_sub_.getTopic() ) + "].  Topic may not exist.");
+             "No CameraInfo received on [" + QString::fromStdString( left_caminfo_sub_.getTopic() ) + "].  Topic may not exist.");
   setStatus( StatusProperty::Warn, "Image", "No Image received");
 
   render_panel_->getCamera()->setPosition( Ogre::Vector3( 999999, 999999, 999999 ));
@@ -358,9 +399,18 @@ void StereoCameraDisplay::update( float wall_dt, float ros_dt )
 {
   try
   {
-    if( texture_.update() || force_render_ )
+    if( left_texture_.update() || right_texture_.update() || force_render_ )
     {
-      caminfo_ok_ = updateCamera();
+      caminfo_ok_ &= updateCamera(
+          left_texture_,
+          left_current_caminfo_,
+          left_bg_screen_rect_,
+          left_fg_screen_rect_);
+      caminfo_ok_ &= updateCamera(
+          right_texture_,
+          right_current_caminfo_,
+          right_bg_screen_rect_,
+          right_fg_screen_rect_);
       force_render_ = false;
     }
   }
@@ -372,15 +422,19 @@ void StereoCameraDisplay::update( float wall_dt, float ros_dt )
   render_panel_->getRenderWindow()->update();
 }
 
-bool StereoCameraDisplay::updateCamera()
+bool StereoCameraDisplay::updateCamera(
+  ROSImageTexture &texture, 
+  sensor_msgs::CameraInfo::ConstPtr &current_caminfo,
+  Ogre::Rectangle2D* &bg_screen_rect,
+  Ogre::Rectangle2D* &fg_screen_rect)
 {
   sensor_msgs::CameraInfo::ConstPtr info;
   sensor_msgs::Image::ConstPtr image;
   {
-    boost::mutex::scoped_lock lock( caminfo_mutex_ );
+    //boost::mutex::scoped_lock lock( caminfo_mutex_ );
 
-    info = current_caminfo_;
-    image = texture_.getImage();
+    info = current_caminfo;
+    image = texture.getImage();
   }
 
   if( !info || !image )
@@ -421,13 +475,13 @@ bool StereoCameraDisplay::updateCamera()
   if( img_width == 0 )
   {
     ROS_DEBUG( "Malformed CameraInfo on camera [%s], width = 0", qPrintable( getName() ));
-    img_width = texture_.getWidth();
+    img_width = texture.getWidth();
   }
 
   if (img_height == 0)
   {
     ROS_DEBUG( "Malformed CameraInfo on camera [%s], height = 0", qPrintable( getName() ));
-    img_height = texture_.getHeight();
+    img_height = texture.getHeight();
   }
 
   if( img_height == 0.0 || img_width == 0.0 )
@@ -461,14 +515,19 @@ bool StereoCameraDisplay::updateCamera()
     }
   }
 
-  // Add the camera's translation relative to the left camera (from P[3]);
-  double tx = -1 * (info->P[3] / fx);
-  Ogre::Vector3 right = orientation * Ogre::Vector3::UNIT_X;
-  position = position + (right * tx);
+  Ogre::Vector3 position_right(position);
 
-  double ty = -1 * (info->P[7] / fy);
+  // Add the camera's translation relative to the left camera (from P[3]);
+  Ogre::Vector3 right = orientation * Ogre::Vector3::UNIT_X;
+  //position = position - (right * right_offset_.x);
+  position_right = position_right - (right * right_offset_.x);
+
   Ogre::Vector3 down = orientation * Ogre::Vector3::UNIT_Y;
-  position = position + (down * ty);
+  //position = position - (down * right_offset_.y);
+  position_right = position_right - (down * right_offset_.y);
+
+  //printf( "StereoCameraDisplay:updateCamera(): pos = %.2f, %.2f, %.2f.\n", position.x, position.y, position.z );
+  //printf( "StereoCameraDisplay:updateCamera(): frustum offset = %.2f.\n", tx );
 
   if( !validateFloats( position ))
   {
@@ -478,6 +537,9 @@ bool StereoCameraDisplay::updateCamera()
 
   render_panel_->getCamera()->setPosition( position );
   render_panel_->getCamera()->setOrientation( orientation );
+
+  render_panel_->getRightCamera()->setPosition( position_right );
+  render_panel_->getRightCamera()->setOrientation( orientation );
 
   // calculate the projection matrix
   double cx = info->P[2];
@@ -501,21 +563,28 @@ bool StereoCameraDisplay::updateCamera()
   proj_matrix[3][2]= -1;
 
   render_panel_->getCamera()->setCustomProjectionMatrix( true, proj_matrix );
+  render_panel_->getRightCamera()->setCustomProjectionMatrix( true, proj_matrix );
+
+  //std::cerr<<proj_matrix<<std::endl<<std::endl;
 
   setStatus( StatusProperty::Ok, "Camera Info", "OK" );
 
-#if 0
+#if 1
   static Axes* debug_axes = new Axes(scene_manager_, 0, 0.2, 0.01);
   debug_axes->setPosition(position);
   debug_axes->setOrientation(orientation);
+
+  static Axes* debug_axes_right = new Axes(scene_manager_, 0, 0.2, 0.01);
+  debug_axes_right->setPosition(position_right);
+  debug_axes_right->setOrientation(orientation);
 #endif
 
   //adjust the image rectangles to fit the zoom & aspect ratio
-  bg_screen_rect_->setCorners( -1.0f*zoom_x, 1.0f*zoom_y, 1.0f*zoom_x, -1.0f*zoom_y );
-  fg_screen_rect_->setCorners( -1.0f*zoom_x, 1.0f*zoom_y, 1.0f*zoom_x, -1.0f*zoom_y );
+  bg_screen_rect->setCorners( -1.0f*zoom_x, 1.0f*zoom_y, 1.0f*zoom_x, -1.0f*zoom_y );
+  fg_screen_rect->setCorners( -1.0f*zoom_x, 1.0f*zoom_y, 1.0f*zoom_x, -1.0f*zoom_y );
 
-  bg_screen_rect_->setBoundingBox( Ogre::AxisAlignedBox::BOX_INFINITE );
-  fg_screen_rect_->setBoundingBox( Ogre::AxisAlignedBox::BOX_INFINITE );
+  bg_screen_rect->setBoundingBox( Ogre::AxisAlignedBox::BOX_INFINITE );
+  fg_screen_rect->setBoundingBox( Ogre::AxisAlignedBox::BOX_INFINITE );
 
   setStatus( StatusProperty::Ok, "Time", "ok" );
   setStatus( StatusProperty::Ok, "Camera Info", "ok" );
@@ -523,28 +592,52 @@ bool StereoCameraDisplay::updateCamera()
   return true;
 }
 
-void StereoCameraDisplay::processMessage(const sensor_msgs::Image::ConstPtr& msg)
+void StereoCameraDisplay::processMessages(
+    const sensor_msgs::Image::ConstPtr& left_msg,
+    const sensor_msgs::Image::ConstPtr& right_msg)
 {
-  texture_.addMessage(msg);
+  if(left_msg->encoding != right_msg->encoding) {
+    ROS_ERROR("Encodings must be the same for stereo images!");
+    return;
+  }
+
+  left_texture_.addMessage(left_msg);
+  right_texture_.addMessage(right_msg);
 }
 
-void StereoCameraDisplay::caminfoCallback( const sensor_msgs::CameraInfo::ConstPtr& msg )
+void StereoCameraDisplay::leftCaminfoCallback(
+    const sensor_msgs::CameraInfo::ConstPtr& msg)
 {
-  boost::mutex::scoped_lock lock( caminfo_mutex_ );
-  current_caminfo_ = msg;
-  new_caminfo_ = true;
+  //boost::mutex::scoped_lock lock( caminfo_mutex_ );
+  left_current_caminfo_ = msg;
+  left_new_caminfo_ = true;
 }
+
+void StereoCameraDisplay::rightCaminfoCallback(
+    const sensor_msgs::CameraInfo::ConstPtr& msg)
+{
+  //boost::mutex::scoped_lock lock( caminfo_mutex_ );
+  right_current_caminfo_ = msg;
+  right_new_caminfo_ = true;
+  double fx = msg->P[0];
+  double fy = msg->P[5];
+  double tx = msg->P[3] / fx;
+  double ty = msg->P[7] / fy;
+  right_offset_ = Ogre::Vector2(tx, ty);
+}
+   
 
 void StereoCameraDisplay::fixedFrameChanged()
 {
   std::string targetFrame = fixed_frame_.toStdString();
-  caminfo_tf_filter_->setTargetFrame(targetFrame);
-  ImageDisplayBase::fixedFrameChanged();
+  left_caminfo_tf_filter_->setTargetFrame(targetFrame);
+  right_caminfo_tf_filter_->setTargetFrame(targetFrame);
+  StereoImageDisplayBase::fixedFrameChanged();
 }
 
 void StereoCameraDisplay::reset()
 {
-  ImageDisplayBase::reset();
+  StereoImageDisplayBase::reset();
   clear();
 }
 

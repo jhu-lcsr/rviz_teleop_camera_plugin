@@ -45,6 +45,8 @@
 # include <rviz/image/image_display_base.h>
 # include <rviz/image/ros_image_texture.h>
 # include <rviz/render_panel.h>
+
+# include "stereo_image_display_base.h"
 #endif
 
 namespace Ogre
@@ -61,9 +63,9 @@ namespace rviz
 class EnumProperty;
 class FloatProperty;
 class IntProperty;
-class RenderPanel;
 class RosTopicProperty;
 class DisplayGroupVisibilityProperty;
+class StereoImageRenderPanel;
 }
 
 namespace rviz
@@ -73,7 +75,7 @@ namespace rviz
  * \class StereoCameraDisplay
  *
  */
-class StereoCameraDisplay: public ImageDisplayBase, public Ogre::RenderTargetListener
+class StereoCameraDisplay: public StereoImageDisplayBase, public Ogre::RenderTargetListener
 {
 Q_OBJECT
 public:
@@ -106,8 +108,9 @@ protected:
   virtual void onEnable();
   virtual void onDisable();
 
-  ROSImageTexture texture_;
-  RenderPanel* render_panel_;
+  ROSImageTexture left_texture_;
+  ROSImageTexture right_texture_;
+  StereoImageRenderPanel* render_panel_;
 
 private Q_SLOTS:
   void forceRender();
@@ -119,39 +122,57 @@ private:
   void subscribe();
   void unsubscribe();
 
-  virtual void processMessage(const sensor_msgs::Image::ConstPtr& msg);
-  void caminfoCallback( const sensor_msgs::CameraInfo::ConstPtr& msg );
+  virtual void processMessages(
+      const sensor_msgs::Image::ConstPtr& left_msg,
+      const sensor_msgs::Image::ConstPtr& right_msg);
+  void leftCaminfoCallback( 
+    const sensor_msgs::CameraInfo::ConstPtr& msg);
+  void rightCaminfoCallback( 
+    const sensor_msgs::CameraInfo::ConstPtr& msg);
 
-  bool updateCamera();
+  bool updateCamera(
+      ROSImageTexture &texture, 
+      sensor_msgs::CameraInfo::ConstPtr &current_caminfo,
+      Ogre::Rectangle2D* &bg_screen_rect,
+      Ogre::Rectangle2D* &fg_screen_rect);
 
   void clear();
   void updateStatus();
 
-  // Scene node for camera image overlaying
+  // Scene node for 3d view
   Ogre::SceneNode* bg_scene_node_;
-  // Scene node for camera image underlaying
   Ogre::SceneNode* fg_scene_node_;
 
+  Ogre::Vector2 right_offset_;
+
   // Image rect for camera image underlaying
-  Ogre::Rectangle2D* bg_screen_rect_;
-  Ogre::MaterialPtr bg_material_;
+  Ogre::Rectangle2D* left_bg_screen_rect_;
+  Ogre::Rectangle2D* right_bg_screen_rect_;
+  Ogre::MaterialPtr left_bg_material_;
+  Ogre::MaterialPtr right_bg_material_;
 
   // Image rect for camera image overlaying
-  Ogre::Rectangle2D* fg_screen_rect_;
-  Ogre::MaterialPtr fg_material_;
+  Ogre::Rectangle2D* left_fg_screen_rect_;
+  Ogre::Rectangle2D* right_fg_screen_rect_;
+  Ogre::MaterialPtr left_fg_material_;
+  Ogre::MaterialPtr right_fg_material_;
 
-  message_filters::Subscriber<sensor_msgs::CameraInfo> caminfo_sub_;
-  tf::MessageFilter<sensor_msgs::CameraInfo>* caminfo_tf_filter_;
+  message_filters::Subscriber<sensor_msgs::CameraInfo> left_caminfo_sub_;
+  message_filters::Subscriber<sensor_msgs::CameraInfo> right_caminfo_sub_;
+  tf::MessageFilter<sensor_msgs::CameraInfo>* left_caminfo_tf_filter_;
+  tf::MessageFilter<sensor_msgs::CameraInfo>* right_caminfo_tf_filter_;
 
   FloatProperty* alpha_property_;
   EnumProperty* image_position_property_;
   FloatProperty* zoom_property_;
   DisplayGroupVisibilityProperty* visibility_property_;
 
-  sensor_msgs::CameraInfo::ConstPtr current_caminfo_;
+  sensor_msgs::CameraInfo::ConstPtr left_current_caminfo_;
+  sensor_msgs::CameraInfo::ConstPtr right_current_caminfo_;
   boost::mutex caminfo_mutex_;
 
-  bool new_caminfo_;
+  bool left_new_caminfo_;
+  bool right_new_caminfo_;
 
   bool caminfo_ok_;
 

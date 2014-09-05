@@ -248,7 +248,7 @@ void StereoImageDisplayBase::subscribe()
                 update_nh_));
         right_tf_filter_.reset(
             new tf::MessageFilter<sensor_msgs::Image>(
-                *left_sub_,
+                *right_sub_,
                 (tf::Transformer&)*(context_->getTFClient()), 
                 targetFrame_, 
                 (uint32_t)queue_size_property_->getInt(), 
