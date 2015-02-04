@@ -41,6 +41,8 @@
 #include <OgreTechnique.h>
 #include <OgreCamera.h>
 
+#include <ros/ros.h>
+
 #include <tf/transform_listener.h>
 
 #include "rviz/bit_allocator.h"
@@ -91,7 +93,7 @@ StereoCameraDisplay::StereoCameraDisplay()
   , force_render_( false )
   , caminfo_ok_(false)
 {
-  image_position_property_ = new EnumProperty( "Image Rendering", BOTH,
+  image_position_property_ = new EnumProperty( "Image Rendering", OVERLAY,
                                                "Render the image behind all other geometry or overlay it on top, or both.",
                                                this, SLOT( forceRender() ));
   image_position_property_->addOption( BACKGROUND );
@@ -178,13 +180,33 @@ static void create_rect(
   screen_rect = new Ogre::Rectangle2D(true);
   screen_rect->setCorners(-1.0f, 1.0f, 1.0f, -1.0f);
 
-  screen_rect->setRenderQueueGroup(Ogre::RENDER_QUEUE_BACKGROUND);
   screen_rect->setBoundingBox(Ogre::AxisAlignedBox::BOX_INFINITE);
   screen_rect->setMaterial(material->getName());
 
   scene_node->attachObject(screen_rect);
   scene_node->setVisible(false);
 }
+
+static void create_fg_rect(
+    Ogre::Rectangle2D* &screen_rect,
+    Ogre::SceneNode* &scene_node,
+    Ogre::MaterialPtr &material)
+{
+  create_rect(screen_rect, scene_node, material);
+
+  screen_rect->setRenderQueueGroup(Ogre::RENDER_QUEUE_OVERLAY - 1);
+}
+
+static void create_bg_rect(
+    Ogre::Rectangle2D* &screen_rect,
+    Ogre::SceneNode* &scene_node,
+    Ogre::MaterialPtr &material)
+{
+  create_rect(screen_rect, scene_node, material);
+
+  screen_rect->setRenderQueueGroup(Ogre::RENDER_QUEUE_BACKGROUND);
+}
+
 
 void StereoCameraDisplay::onInitialize()
 {
@@ -218,26 +240,26 @@ void StereoCameraDisplay::onInitialize()
     create_material(mat_name_ss.str()+"_bg_right", right_texture_, right_bg_material_);
 
     // create the image underlay rect
-    create_rect(left_bg_screen_rect_, bg_scene_node_, left_bg_material_);
-    create_rect(right_bg_screen_rect_, bg_scene_node_, right_bg_material_);
+    create_bg_rect(left_bg_screen_rect_, bg_scene_node_, left_bg_material_);
+    create_bg_rect(right_bg_screen_rect_, bg_scene_node_, right_bg_material_);
     
     // create the image overlay material
     create_material(mat_name_ss.str()+"_fg_left", left_texture_, left_fg_material_);
-    left_fg_material_->setSceneBlending( Ogre::SBT_TRANSPARENT_ALPHA );
+    left_fg_material_->setSceneBlending( Ogre::SBT_ADD );
     create_material(mat_name_ss.str()+"_fg_right", right_texture_, right_fg_material_);
-    right_fg_material_->setSceneBlending( Ogre::SBT_TRANSPARENT_ALPHA );
+    right_fg_material_->setSceneBlending( Ogre::SBT_ADD );
 
     // create the image overlay rect
-    create_rect(left_fg_screen_rect_, fg_scene_node_, left_fg_material_);
-    create_rect(right_fg_screen_rect_, fg_scene_node_, right_fg_material_);
+    create_fg_rect(left_fg_screen_rect_, fg_scene_node_, left_fg_material_);
+    create_fg_rect(right_fg_screen_rect_, fg_scene_node_, right_fg_material_);
   }
 
   updateAlpha();
 
   render_panel_ = new StereoImageRenderPanel();
-  render_panel_->addLeftRect(left_bg_screen_rect_);
+  //render_panel_->addLeftRect(left_bg_screen_rect_);
   render_panel_->addLeftRect(left_fg_screen_rect_);
-  render_panel_->addRightRect(right_bg_screen_rect_);
+  //render_panel_->addRightRect(right_bg_screen_rect_);
   render_panel_->addRightRect(right_fg_screen_rect_);
   render_panel_->getRenderWindow()->addListener( this );
   render_panel_->getRenderWindow()->setAutoUpdated(false);
@@ -256,6 +278,7 @@ void StereoCameraDisplay::onInitialize()
 
   right_caminfo_tf_filter_->connectInput(right_caminfo_sub_);
   right_caminfo_tf_filter_->registerCallback(boost::bind(&StereoCameraDisplay::rightCaminfoCallback, this, _1));
+
   //context_->getFrameManager()->registerFilterForTransformStatusCheck(caminfo_tf_filter_, this);
 
   vis_bit_ = context_->visibilityBits()->allocBit();
@@ -274,8 +297,8 @@ void StereoCameraDisplay::onInitialize()
 void StereoCameraDisplay::preRenderTargetUpdate(const Ogre::RenderTargetEvent& evt)
 {
   QString image_position = image_position_property_->getString();
-  //bg_scene_node_->setVisible( caminfo_ok_ && (image_position == BACKGROUND || image_position == BOTH) );
-  //fg_scene_node_->setVisible( caminfo_ok_ && (image_position == OVERLAY || image_position == BOTH) );
+  bg_scene_node_->setVisible( caminfo_ok_ && (image_position == BACKGROUND || image_position == BOTH) );
+  fg_scene_node_->setVisible( caminfo_ok_ && (image_position == OVERLAY || image_position == BOTH) );
 
   // set view flags on all displays
   visibility_property_->update();
@@ -343,7 +366,7 @@ static void set_material_alpha(Ogre::MaterialPtr &material, double alpha)
   if( pass->getNumTextureUnitStates() > 0 )
   {
     Ogre::TextureUnitState* tex_unit = pass->getTextureUnitState( 0 );
-    tex_unit->setAlphaOperation( Ogre::LBX_MODULATE, Ogre::LBS_MANUAL, Ogre::LBS_CURRENT, alpha );
+    tex_unit->setAlphaOperation( Ogre::LBX_ADD_SIGNED, Ogre::LBS_TEXTURE, Ogre::LBS_CURRENT);
   }
   else
   {

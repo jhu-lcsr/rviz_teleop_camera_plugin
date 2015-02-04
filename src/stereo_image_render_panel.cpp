@@ -53,6 +53,8 @@ void StereoImageRenderPanel::preViewportUpdate(
 
   const bool left = viewport == this->getViewport();
   
+  // TODO: NOTE: FIXME: this ignored fg/bg separation
+
   // Show left rects
   for(std::vector<Ogre::Rectangle2D*>::iterator it = left_rects_.begin();
       it != left_rects_.end();
