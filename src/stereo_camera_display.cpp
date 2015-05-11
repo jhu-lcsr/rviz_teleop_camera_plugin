@@ -71,7 +71,7 @@ const QString StereoCameraDisplay::BACKGROUND( "background" );
 const QString StereoCameraDisplay::OVERLAY( "overlay" );
 const QString StereoCameraDisplay::BOTH( "background and overlay" );
 
-bool validateFloats(const sensor_msgs::CameraInfo& msg)
+static bool validateFloats(const sensor_msgs::CameraInfo& msg)
 {
   bool valid = true;
   valid = valid && validateFloats( msg.D );

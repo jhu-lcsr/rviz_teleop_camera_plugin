@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(rviz_stereo_camera_plugin)
+project(rviz_teleop_camera_plugin)
 
 find_package(catkin REQUIRED COMPONENTS rviz message_filters tf)
 catkin_package()
@@ -21,6 +21,7 @@ qt4_wrap_cpp(MOC_FILES
   src/stereo_image_display_base.h
   src/stereo_image_display.h
   src/stereo_camera_display.h
+  src/mono_camera_display.h
   )
 
 ## Here we specify the list of source files, including the output of
@@ -30,6 +31,7 @@ set(SOURCE_FILES
   src/stereo_image_display_base.cpp
   src/stereo_image_display.cpp
   src/stereo_camera_display.cpp
+  src/mono_camera_display.cpp
   ${MOC_FILES}
   )
 
