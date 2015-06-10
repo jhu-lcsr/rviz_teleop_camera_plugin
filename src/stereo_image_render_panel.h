@@ -41,7 +41,9 @@ namespace rviz {
     void addLeftRect(Ogre::Rectangle2D *rect);
     void addRightRect(Ogre::Rectangle2D *rect);
 
+    Ogre::Camera* getLeftCamera();
     Ogre::Camera* getRightCamera();
+    Ogre::Viewport* getLeftViewport();
     Ogre::Viewport* getRightViewport();
   protected:
     void preViewportUpdate( const Ogre::RenderTargetViewportEvent& evt);

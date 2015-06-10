@@ -51,7 +51,7 @@ void StereoImageRenderPanel::preViewportUpdate(
   rviz::RenderPanel::preViewportUpdate(evt);
   Ogre::Viewport* viewport = evt.source;
 
-  const bool left = viewport == this->getViewport();
+  const bool left = viewport == this->getLeftViewport();
   
   // TODO: NOTE: FIXME: this ignored fg/bg separation
 
@@ -72,8 +72,17 @@ void StereoImageRenderPanel::preViewportUpdate(
   }
 }
 
+Ogre::Camera* StereoImageRenderPanel::getLeftCamera() {
+  return left_camera_;
+}
+
+
 Ogre::Camera* StereoImageRenderPanel::getRightCamera() {
   return right_camera_;
+}
+
+Ogre::Viewport* StereoImageRenderPanel::getLeftViewport() {
+  return viewport_;
 }
 
 Ogre::Viewport* StereoImageRenderPanel::getRightViewport() {

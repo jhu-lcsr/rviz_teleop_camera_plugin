@@ -257,6 +257,7 @@ void StereoCameraDisplay::onInitialize()
   updateAlpha();
 
   render_panel_ = new StereoImageRenderPanel();
+  render_panel_->enableStereo(true);
   //render_panel_->addLeftRect(left_bg_screen_rect_);
   render_panel_->addLeftRect(left_fg_screen_rect_);
   //render_panel_->addRightRect(right_bg_screen_rect_);
@@ -271,7 +272,8 @@ void StereoCameraDisplay::onInitialize()
 
   render_panel_->setAutoRender(false);
   render_panel_->setOverlaysEnabled(false);
-  render_panel_->getCamera()->setNearClipDistance( 0.01f );
+  render_panel_->getLeftCamera()->setNearClipDistance( 0.01f );
+  render_panel_->getRightCamera()->setNearClipDistance( 0.01f );
 
   left_caminfo_tf_filter_->connectInput(left_caminfo_sub_);
   left_caminfo_tf_filter_->registerCallback(boost::bind(&StereoCameraDisplay::leftCaminfoCallback, this, _1));
@@ -415,7 +417,8 @@ void StereoCameraDisplay::clear()
              "No CameraInfo received on [" + QString::fromStdString( left_caminfo_sub_.getTopic() ) + "].  Topic may not exist.");
   setStatus( StatusProperty::Warn, "Image", "No Image received");
 
-  render_panel_->getCamera()->setPosition( Ogre::Vector3( 999999, 999999, 999999 ));
+  render_panel_->getLeftCamera()->setPosition( Ogre::Vector3( 999999, 999999, 999999 ));
+  render_panel_->getRightCamera()->setPosition( Ogre::Vector3( 999999, 999999, 999999 ));
 }
 
 void StereoCameraDisplay::update( float wall_dt, float ros_dt )
@@ -428,7 +431,14 @@ void StereoCameraDisplay::update( float wall_dt, float ros_dt )
           left_texture_,
           left_current_caminfo_,
           left_bg_screen_rect_,
-          left_fg_screen_rect_);
+          left_fg_screen_rect_,
+          render_panel_->getCamera());
+      caminfo_ok_ &= updateCamera(
+          left_texture_,
+          left_current_caminfo_,
+          left_bg_screen_rect_,
+          left_fg_screen_rect_,
+          render_panel_->getLeftCamera());
     }
     if( right_texture_.update() || force_render_ )
     {
@@ -436,7 +446,8 @@ void StereoCameraDisplay::update( float wall_dt, float ros_dt )
           right_texture_,
           right_current_caminfo_,
           right_bg_screen_rect_,
-          right_fg_screen_rect_);
+          right_fg_screen_rect_,
+          render_panel_->getRightCamera());
     }
 
     force_render_ = false;
@@ -453,24 +464,22 @@ bool StereoCameraDisplay::updateCamera(
   ROSImageTexture &texture, 
   sensor_msgs::CameraInfo::ConstPtr &current_caminfo,
   Ogre::Rectangle2D* &bg_screen_rect,
-  Ogre::Rectangle2D* &fg_screen_rect)
+  Ogre::Rectangle2D* &fg_screen_rect,
+  Ogre::Camera* camera)
 {
   sensor_msgs::CameraInfo::ConstPtr info;
   sensor_msgs::Image::ConstPtr image;
   {
     //boost::mutex::scoped_lock lock( caminfo_mutex_ );
-
     info = current_caminfo;
     image = texture.getImage();
   }
 
-  if( !info || !image )
-  {
+  if( !info || !image ) {
     return false;
   }
 
-  if( !validateFloats( *info ))
-  {
+  if( !validateFloats( *info )) {
     setStatus( StatusProperty::Error, "Camera Info", "Contains invalid floating point values (nans or infs)" );
     return false;
   }
@@ -490,7 +499,7 @@ bool StereoCameraDisplay::updateCamera(
   Ogre::Quaternion orientation;
   context_->getFrameManager()->getTransform( image->header.frame_id, image->header.stamp, position, orientation );
 
-  //printf( "StereoCameraDisplay:updateCamera(): pos = %.2f, %.2f, %.2f.\n", position.x, position.y, position.z );
+  //printf( "CameraDisplay:updateCamera(): pos = %.2f, %.2f, %.2f.\n", position.x, position.y, position.z );
 
   // convert vision (Z-forward) frame to ogre frame (Z-out)
   orientation = orientation * Ogre::Quaternion( Ogre::Degree( 180 ), Ogre::Vector3::UNIT_X );
@@ -542,19 +551,10 @@ bool StereoCameraDisplay::updateCamera(
     }
   }
 
-  Ogre::Vector3 position_right(position);
-
   // Add the camera's translation relative to the left camera (from P[3]);
-  Ogre::Vector3 right = orientation * Ogre::Vector3::UNIT_X;
-  //position = position + (right * right_offset_.x)/2.0;
-  position_right = position_right - (right * right_offset_.x);
-
-  Ogre::Vector3 down = orientation * Ogre::Vector3::UNIT_Y;
-  //position = position - (down * right_offset_.y);
-  //position_right = position_right - (down * right_offset_.y);
-
-  //printf( "StereoCameraDisplay:updateCamera(): pos = %.2f, %.2f, %.2f.\n", position.x, position.y, position.z );
-  //printf( "StereoCameraDisplay:updateCamera(): frustum offset = %.2f.\n", tx );
+  Ogre::Vector2 offset(
+      -1 * (info->P[3] / fx),
+      -1 * (info->P[7] / fy));
 
   if( !validateFloats( position ))
   {
@@ -562,11 +562,15 @@ bool StereoCameraDisplay::updateCamera(
     return false;
   }
 
-  render_panel_->getCamera()->setPosition( position );
-  render_panel_->getCamera()->setOrientation( orientation );
+  const Ogre::Vector3 right = camera->getRight();
+  const Ogre::Vector3 up = camera->getUp();
+  const Ogre::Vector3 newpos = position
+    + right * offset.x
+    + up * offset.y;
 
-  render_panel_->getRightCamera()->setPosition( position_right );
-  render_panel_->getRightCamera()->setOrientation( orientation );
+  camera->setPosition( newpos );
+  camera->setOrientation( orientation );
+  camera->setFrustumOffset( offset );
 
   // calculate the projection matrix
   double cx = info->P[2];
@@ -577,12 +581,11 @@ bool StereoCameraDisplay::updateCamera(
 
   Ogre::Matrix4 proj_matrix;
   proj_matrix = Ogre::Matrix4::ZERO;
-
  
   proj_matrix[0][0]= 2.0 * fx/img_width * zoom_x;
   proj_matrix[1][1]= 2.0 * fy/img_height * zoom_y;
 
-  proj_matrix[0][2]= 2.0 * (0.5 - (cx)/img_width) * zoom_x;
+  proj_matrix[0][2]= 2.0 * (0.5 - cx/img_width) * zoom_x;
   proj_matrix[1][2]= 2.0 * (cy/img_height - 0.5) * zoom_y;
 
   proj_matrix[2][2]= -(far_plane+near_plane) / (far_plane-near_plane);
@@ -590,24 +593,16 @@ bool StereoCameraDisplay::updateCamera(
 
   proj_matrix[3][2]= -1;
 
-  render_panel_->getCamera()->setCustomProjectionMatrix( true, proj_matrix );
-
-  proj_matrix[0][2]= 2.0 * (0.5 - (cx)/img_width) * zoom_x;
-
-  render_panel_->getRightCamera()->setCustomProjectionMatrix( true, proj_matrix );
+  camera->setCustomProjectionMatrix( true, proj_matrix );
 
   //std::cerr<<proj_matrix<<std::endl<<std::endl;
 
   setStatus( StatusProperty::Ok, "Camera Info", "OK" );
 
-#if 1
+#if 0
   static Axes* debug_axes = new Axes(scene_manager_, 0, 0.2, 0.01);
   debug_axes->setPosition(position);
   debug_axes->setOrientation(orientation);
-
-  static Axes* debug_axes_right = new Axes(scene_manager_, 0, 0.2, 0.01);
-  debug_axes_right->setPosition(position_right);
-  debug_axes_right->setOrientation(orientation);
 #endif
 
   //adjust the image rectangles to fit the zoom & aspect ratio
@@ -619,6 +614,8 @@ bool StereoCameraDisplay::updateCamera(
 
   setStatus( StatusProperty::Ok, "Time", "ok" );
   setStatus( StatusProperty::Ok, "Camera Info", "ok" );
+
+  //std::cerr<<"Stereo Sub-Camera \""<<camera->getName()<<"\": "<<std::endl<<*camera<<std::endl<<std::endl;
 
   return true;
 }
@@ -650,11 +647,13 @@ void StereoCameraDisplay::rightCaminfoCallback(
   //boost::mutex::scoped_lock lock( caminfo_mutex_ );
   right_current_caminfo_ = msg;
   right_new_caminfo_ = true;
+#if 0
   double fx = msg->P[0];
   double fy = msg->P[5];
-  double tx = msg->P[3] / fx;
-  double ty = msg->P[7] / fy;
-  right_offset_ = Ogre::Vector2(tx, ty);
+  double tx = -1 * msg->P[3] / fx;
+  double ty = -1 * msg->P[7] / fy;
+  right_offset_ = Ogre::Vector2(-1.0/1000.0 * msg->P[3], ty);
+#endif
 }
    
 

@@ -134,7 +134,8 @@ private:
       ROSImageTexture &texture, 
       sensor_msgs::CameraInfo::ConstPtr &current_caminfo,
       Ogre::Rectangle2D* &bg_screen_rect,
-      Ogre::Rectangle2D* &fg_screen_rect);
+      Ogre::Rectangle2D* &fg_screen_rect,
+      Ogre::Camera* camera);
 
   void clear();
   void updateStatus();
