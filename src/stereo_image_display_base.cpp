@@ -188,6 +188,7 @@ void StereoImageDisplayBase::subscribe()
 {
   if (!isEnabled())
   {
+    ROS_ERROR_STREAM("Can't subscribe because this display element isn't enabled.");
     return;
   }
 
@@ -202,8 +203,18 @@ void StereoImageDisplayBase::subscribe()
     if(!right_sub_)
       right_sub_.reset(new image_transport::SubscriberFilter());
 
-    if (!left_topic_property_->getTopicStd().empty() && !transport_property_->getStdString().empty() &&
-        !right_topic_property_->getTopicStd().empty() && !transport_property_->getStdString().empty() )
+    ROS_INFO_STREAM(
+        "Subscribing to "
+        <<left_topic_property_->getTopicStd()
+        <<" transported as "<<transport_property_->getStdString());
+    ROS_INFO_STREAM(
+        "Subscribing to "
+        <<right_topic_property_->getTopicStd()
+        <<" transported as "<<transport_property_->getStdString());
+
+    if (!left_topic_property_->getTopicStd().empty() &&
+        !right_topic_property_->getTopicStd().empty() && 
+        !transport_property_->getStdString().empty() )
     {
       left_sub_->subscribe(
           *it_, 
@@ -287,10 +298,14 @@ void StereoImageDisplayBase::subscribe()
 void StereoImageDisplayBase::unsubscribe()
 {
   if (left_tf_filter_ && right_tf_filter_ && left_sub_ && right_sub_) {
+    tf_approx_sync_.reset();
+    tf_sync_.reset();
     left_tf_filter_.reset();
     right_tf_filter_.reset();
     left_sub_->unsubscribe();
     right_sub_->unsubscribe();
+    left_sub_.reset();
+    right_sub_.reset();
   }
 }
 
