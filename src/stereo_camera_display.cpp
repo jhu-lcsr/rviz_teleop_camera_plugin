@@ -337,6 +337,7 @@ void StereoCameraDisplay::subscribe()
 
   StereoImageDisplayBase::subscribe();
 
+  // Subscribe to camera info as well
   std::string left_topic = left_topic_property_->getTopicStd();
   std::string left_caminfo_topic = image_transport::getCameraInfoTopic(left_topic_property_->getTopicStd());
 
@@ -476,6 +477,7 @@ bool StereoCameraDisplay::updateCamera(
   }
 
   if( !info || !image ) {
+    setStatus( StatusProperty::Error, "Camera", "Null image!" );
     return false;
   }
 
@@ -624,6 +626,8 @@ void StereoCameraDisplay::processMessages(
     const sensor_msgs::Image::ConstPtr& left_msg,
     const sensor_msgs::Image::ConstPtr& right_msg)
 {
+  setStatus( StatusProperty::Ok, "Messages", "ok" );
+
   if(left_msg->encoding != right_msg->encoding) {
     ROS_ERROR("Encodings must be the same for stereo images!");
     return;

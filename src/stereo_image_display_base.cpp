@@ -194,6 +194,8 @@ void StereoImageDisplayBase::subscribe()
 
   try
   {
+    tf_approx_sync_.reset();
+    tf_sync_.reset();
 
     left_tf_filter_.reset();
     right_tf_filter_.reset();
@@ -292,7 +294,7 @@ void StereoImageDisplayBase::subscribe()
   }
 
   messages_received_ = 0;
-  setStatus(StatusProperty::Warn, "Image", "No Image received");
+  setStatus(StatusProperty::Warn, "Image", "No Image received through TF message filter");
 }
 
 void StereoImageDisplayBase::unsubscribe()

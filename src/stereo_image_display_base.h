@@ -95,7 +95,7 @@ protected:
   void enableTFFilter(std::string& targetFrame)
   {
     targetFrame_ = targetFrame;
-    reset();
+    //reset();
   }
 
   /** @brief ROS topic management. */
